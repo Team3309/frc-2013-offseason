@@ -4,8 +4,9 @@
  */
 package org.team3309.frc2013.commands;
 
+import org.team3309.frc2013.Arm;
+
 import edu.wpi.first.wpilibj.command.Command;
-import org.team3309.frc2013.Shooter;
 
 /**
  *
@@ -23,9 +24,9 @@ public class ExtendRetractLoader extends Command{
 
     protected void execute() {
         if(shouldExtend)
-            Shooter.getInstance().extendLoader();
+        	Arm.getInstance().extendLoader();
         else
-            Shooter.getInstance().retractLoader();
+            Arm.getInstance().retractLoader();
         finished = true;
     }
 

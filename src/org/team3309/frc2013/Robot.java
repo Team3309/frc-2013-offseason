@@ -20,111 +20,106 @@ import org.team3309.frc2013.commands.ShootAuton;
 import org.team3309.frc2013.commands.TrollAuton;
 
 /**
- * The VM is configured to automatically run this class, and to call the functions corresponding to each mode, as described in the IterativeRobot documentation. If you change the name of this class or
- * the package after creating this project, you must also update the manifest file in the resource directory.
+ * The VM is configured to automatically run this class, and to call the
+ * functions corresponding to each mode, as described in the IterativeRobot
+ * documentation. If you change the name of this class or the package after
+ * creating this project, you must also update the manifest file in the resource
+ * directory.
  */
 public class Robot extends IterativeRobot {
 
-    private Drive mDrive = null;
-    private Climber mClimber = null;
-    private Shooter mShooter = null;
-    private XboxController driveXbox = new XboxController(1);
-    private XboxController operatorXbox = new XboxController(2);
-    private Compressor compressor = null;
-    private Scheduler scheduler;
-    private SendableChooser autonChooser = new SendableChooser();
+	private Drive mDrive = null;
+	private Arm mArm = null;
+	private XboxController driverXbox = new XboxController(1);
+	private XboxController operatorXbox = new XboxController(2);
+	private Compressor compressor = null;
+	private Scheduler scheduler;
+	private SendableChooser autonChooser = new SendableChooser();
 
-    /**
-     * This function is run when the robot is first started up and should be used for any initialization code.
-     */
-    public void robotInit() {
-        scheduler = Scheduler.getInstance();
+	private Latch extendLatch = new Latch();
 
-        mDrive = Drive.getInstance();
+	/**
+	 * This function is run when the robot is first started up and should be
+	 * used for any initialization code.
+	 */
+	public void robotInit() {
+		scheduler = Scheduler.getInstance();
 
-        mShooter = Shooter.getInstance();
+		mDrive = Drive.getInstance();
+		mArm = Arm.getInstance();
 
-        mClimber = Climber.getInstance();
+		compressor = new Compressor(RobotMap.PRESSURE_SWITCH,
+				RobotMap.COMPRESSOR_RELAY);
+		compressor.start();
 
-        compressor = new Compressor(RobotMap.PRESSURE_SWITCH, RobotMap.COMPRESSOR_RELAY);
-        compressor.start();
+		autonChooser.addObject("Do nothing", new FakeCommand());
+		SmartDashboard.putData("Autonomous Chooser", autonChooser);
+	}
 
+	public void disabledInit() {
+		mDrive.resetGyro();
+	}
 
-        autonChooser.addDefault("Shoot", new ShootAuton(this));
-        autonChooser.addObject("Troll", new TrollAuton());
-        autonChooser.addObject("Do nothing", new FakeCommand());
-        SmartDashboard.putData("Autonomous Chooser", autonChooser);
-    }
+	public void disabledPeriodic() {
+	}
 
-    public void disabledInit() {
-        mDrive.resetGyro();
-    }
+	public void autonomousInit() {
+		mDrive.resetGyro();
+		mDrive.enablePid();
+		mDrive.resetEncoders();
+		mDrive.driveStraight(0);
 
-    public void disabledPeriodic() {
-    }
+		mDrive.stop();
+		mDrive.disengagePto();
 
-    public void autonomousInit() {
-        mDrive.resetGyro();
-        mDrive.enablePid();
-        mDrive.resetEncoders();
-        mDrive.driveStraight(0);
+		((Command) autonChooser.getSelected()).start();
+	}
 
-        mClimber.unlock();
-        mShooter.tiltDown();
-        mClimber.retractTipper();
-        mClimber.disableClimbingMode();
-        mDrive.stop();
-        mDrive.disengagePto();
+	/**
+	 * This function is called periodically during autonomous
+	 */
+	public void autonomousPeriodic() {
+		scheduler.run();
+	}
 
-        ((Command) autonChooser.getSelected()).start();
-    }
+	public void teleopInit() {
+		mDrive.resetGyro();
+		mDrive.disablePid();
 
-    /**
-     * This function is called periodically during autonomous
-     */
-    public void autonomousPeriodic() {
-        scheduler.run();
-    }
+		mDrive.highGear();
 
-    public void teleopInit() {
-        mDrive.resetGyro();
-        mDrive.disablePid();
+		new JoystickButton(operatorXbox, XboxController.BUTTON_LEFT_BUMPER)
+				.whenPressed(new ExtendRetractLoader());
+	}
 
-        mClimber.unlock();
-        mShooter.tiltUp();
-        mClimber.retractTipper();
-        mClimber.disableClimbingMode();
-        mDrive.highGear();
+	private boolean climbingMode = false;
+	// this stuff copied from
+	// http://chiefdelphi.com/forums/showpost.php?p=1212189&postcount=3
+	private double speed = 0; // use this for ramping the speed to make smoother
+								// control
+	private static final double MAX_SPEED_CHANGE = 0.05; // use this for ramping
+															// the speed to make
+															// smoother control
 
-        new JoystickButton(operatorXbox, XboxController.BUTTON_LEFT_BUMPER).whenPressed(new ExtendRetractLoader());
-    }
-    private boolean climbingMode = false;
-    //this stuff copied from http://chiefdelphi.com/forums/showpost.php?p=1212189&postcount=3
-    private double speed = 0; //use this for ramping the speed to make smoother control
-    private static final double MAX_SPEED_CHANGE = 0.05; //use this for ramping the speed to make smoother control
-    private boolean climbLineUpMode = false;
-
-    /**
-     * This function is called periodically during operator control
-     */
-    public void teleopPeriodic() {
+	/**
+	 * This function is called periodically during operator control
+	 */
+	public void teleopPeriodic() {
         scheduler.run();
 
-        if (driveXbox.getStart()) {
+        if (driverXbox.getStart()) {
             climbingMode = true;
             System.out.println("entering climbing mode");
             mDrive.engagePto();
-            mClimber.enableClimbingMode();
-        } else if (driveXbox.getBack()) {
+        } else if (driverXbox.getBack()) {
             climbingMode = false;
             System.out.println("exiting climbing mode");
             mDrive.disengagePto();
-            mClimber.disableClimbingMode();
         }
 
         if (!climbingMode) {
-            double throttle = driveXbox.getLeftY();
-            double turn = driveXbox.getRightX() + operatorXbox.getLeftX()*.25;
+            double throttle = driverXbox.getLeftY();
+            double turn = driverXbox.getRightX() + operatorXbox.getLeftX()*.25;
 
             if (throttle > (speed + MAX_SPEED_CHANGE)) {
                 speed = speed + MAX_SPEED_CHANGE;
@@ -134,7 +129,7 @@ public class Robot extends IterativeRobot {
                 speed = throttle;
             }
 
-            if (Math.abs(driveXbox.getRightTrigger()) > .25) {
+            if (Math.abs(driverXbox.getRightTrigger()) > .25) {
                 mDrive.lowGear();
                 compressor.stop();
             } else {
@@ -142,37 +137,30 @@ public class Robot extends IterativeRobot {
                 compressor.start();
             }
 
-            if (driveXbox.getLeftBumper()) {
-                climbLineUpMode = true;
-            } else if (driveXbox.getRightBumper()) {
-                climbLineUpMode = false;
-            }
-            if(climbLineUpMode)
-                mDrive.drive(throttle, turn*.25);
-            else
-                mDrive.drive(throttle, turn);
-            
-            if(driveXbox.getLeftStickPressed())
+            if(driverXbox.getLeftStickPressed())
                 mDrive.disableGyro();
-            else if(driveXbox.getRightStickPressed())
+            else if(driverXbox.getRightStickPressed())
                 mDrive.enableGyro();
 
-            if (driveXbox.getAButton()) {
+            if (driverXbox.getAButton()) {
                 mDrive.resetGyro();
                 mDrive.resetEncoders();
             }
         }
-
-        if (climbingMode) {
-            mClimber.runTraveller(driveXbox.getLeftY());
-            if (driveXbox.getLeftBumper()) {
-                mClimber.unlock();
-            } else if (driveXbox.getRightBumper()) {
-                mClimber.lock();
-            }
+        
+        mArm.tilt(operatorXbox.getLeftY());
+        mArm.setShooter(operatorXbox.getRightY());
+        
+        if(operatorXbox.getRightBumper())
+        	mArm.shoot();
+        if(operatorXbox.getAButton())
+        	mArm.setIntake(.99);
+        else if(operatorXbox.getBButton()){
+        	mArm.setIntake(-.99);
         }
+        
 
-        double target = 0;
+        /*double target = 0;
 
         if (operatorXbox.getYButton()) {
             target = Shooter.PYRAMID_TARGET_RPM;
@@ -193,26 +181,12 @@ public class Robot extends IterativeRobot {
             compressor.stop();
         } else {
             compressor.start();
-        }
-
-        if (operatorXbox.getBButton()) {
-            mShooter.tiltUp();
-        } else if (operatorXbox.getAButton()) {
-            mShooter.tiltDown();
-        }
-
-        if (driveXbox.getXButton()) {
-            mClimber.tip();
-        } else if (driveXbox.getYButton()) {
-            mClimber.retractTipper();
-        }
-
-        mClimber.setDumper(-operatorXbox.getRightY());
+        }*/
     }
 
-    /**
-     * This function is called periodically during test mode
-     */
-    public void testPeriodic() {
-    }
+	/**
+	 * This function is called periodically during test mode
+	 */
+	public void testPeriodic() {
+	}
 }
